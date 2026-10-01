@@ -1,6 +1,6 @@
 #include <string>
 #include <iostream>
-#include <bitset>
+#include <stdexcept>
 
 
 class BitArray
@@ -10,8 +10,9 @@ private:
   int num_bits_;
   int num_blocks_;
 
-  static const int BITS_PER_BLOCK = sizeof(unsigned long) * 8;
+
 public:
+    static const int BITS_PER_BLOCK = sizeof(unsigned long) * 8;
   BitArray();//Конструирует массив, хранящий заданное количество бит. ***
              //Первые sizeof(long) бит можно инициализровать с помощью параметра value. ***
   ~BitArray();// деструктор ***
@@ -21,7 +22,7 @@ public:
   BitArray& operator=(const BitArray& b); // Копирующее присваивание ***
 
 
-  //Изменяет размер массива. В случае расширения, новые элементы 
+  //Изменяет размер массива. В случае расширения, новые элементы
   //инициализируются значением value.
   void resize(int new_num_bits, bool value = false);
 
@@ -30,10 +31,12 @@ public:
   void clear(); // ***
 
 
-  //Добавляет новый бит в конец массива. В случае необходимости 
+
+  //Добавляет новый бит в конец массива. В случае необходимости
   //происходит перераспределение памяти.
   void push_back(bool bit); //***
 
+  void remove_extra_bits();
 
   //Битовые операции над массивами.
   //Работают только на массивах одинакового размера.
@@ -41,7 +44,7 @@ public:
   BitArray& operator&=(const BitArray& b); // ***
   BitArray& operator|=(const BitArray& b); // ***
   BitArray& operator^=(const BitArray& b); // ***
- 
+
   //Битовый сдвиг с заполнением нулями.
   BitArray& operator<<=(int n); // ***
   BitArray& operator>>=(int n); // ***
@@ -75,10 +78,13 @@ public:
 
   int size() const;// ***
   bool empty() const;// ***
-  
+
+
   //Возвращает строковое представление массива.
   std::string to_string() const; //***
+
 };
+
 
 bool operator==(const BitArray & a, const BitArray & b); // ***
 bool operator!=(const BitArray & a, const BitArray & b); // ***
@@ -87,10 +93,18 @@ BitArray operator&(const BitArray& b1, const BitArray& b2); //***
 BitArray operator|(const BitArray& b1, const BitArray& b2); //***
 BitArray operator^(const BitArray& b1, const BitArray& b2); //***
 
+int count_blocks(int num_bits);
+
 BitArray::BitArray() {
     arr_ = nullptr;
     num_bits_ = 0;
     num_blocks_ = 0;
+}
+
+int count_blocks(int num_bits) {
+    if (num_bits % BitArray::BITS_PER_BLOCK == 0)
+        return num_bits / BitArray::BITS_PER_BLOCK;
+    return num_bits / BitArray::BITS_PER_BLOCK + 1;
 }
 
 BitArray::BitArray(int num_bits, unsigned long value): arr_(nullptr), num_bits_(0) {
@@ -102,18 +116,14 @@ BitArray::BitArray(int num_bits, unsigned long value): arr_(nullptr), num_bits_(
 
         num_bits_ = num_bits;
 
-        if (num_bits % BITS_PER_BLOCK == 0)
-            num_blocks_ = num_bits_ / BITS_PER_BLOCK;
-        else
-            num_blocks_ = num_bits_ / BITS_PER_BLOCK + 1;
+        num_blocks_ = count_blocks(num_bits);
 
         arr_ = new unsigned long[num_blocks_]{};
         arr_[0] = value;
 
-        if (num_bits_ < BITS_PER_BLOCK) {
-            unsigned long mask = (1UL << num_bits_) - 1UL;
-            arr_[0] &= mask;
-            }
+        remove_extra_bits();
+
+
         }
 
     }
@@ -140,14 +150,14 @@ void BitArray::swap(BitArray& b) {
 
 }
 
-BitArray::BitArray(const BitArray& b): arr_(nullptr), num_bits_(b.num_bits_), num_blocks_(b.num_blocks_){
-
-    if (num_bits_ > 0)
+BitArray::BitArray(const BitArray& b): arr_(nullptr), num_bits_(b.num_bits_), num_blocks_(b.num_blocks_) {
+    if (num_bits_ > 0) {
         arr_ = new unsigned long[num_blocks_]{};
 
-    for (int i = 0; i < num_blocks_; i++)
-        arr_[i] = b.arr_[i];
+        for (int i = 0; i < num_blocks_; i++)
+            arr_[i] = b.arr_[i];
 
+    }
 }
 
 BitArray& BitArray::operator=(const BitArray& b) {
@@ -156,11 +166,12 @@ BitArray& BitArray::operator=(const BitArray& b) {
         return *this;
 
     unsigned long* new_arr  = nullptr;
-    if (b.num_blocks_ > 0)
-        new_arr = new unsigned long[b.num_blocks_];
+    if (b.num_blocks_ > 0) {
+        new_arr = new unsigned long[b.num_blocks_]{};
 
-    for (int i = 0; i < b.num_blocks_; i++)
-        new_arr[i] = b.arr_[i];
+        for (int i = 0; i < b.num_blocks_; i++)
+            new_arr[i] = b.arr_[i];
+    }
 
     delete[] arr_;
     arr_ = new_arr;
@@ -187,10 +198,7 @@ BitArray& BitArray::set() {
     for (int i = 0; i < num_blocks_; i++)
         arr_[i] = ~0UL;
 
-   int remainder = num_bits_% BITS_PER_BLOCK;
-
-    if (remainder != 0)
-        arr_[num_blocks_ - 1] &= (1UL << remainder) - 1UL;
+    remove_extra_bits();
     return *this;
 }
 
@@ -245,6 +253,14 @@ void BitArray::clear() {
     num_blocks_ = 0;
 }
 
+void BitArray::remove_extra_bits() {
+
+    int remainder = num_bits_% BITS_PER_BLOCK;
+    if (remainder != 0 && num_blocks_ > 0)
+        arr_[num_blocks_ - 1] &= (1UL << remainder) - 1UL;
+
+}
+
 
 //true, если все биты массива ложны.
 bool BitArray::none() const {
@@ -269,9 +285,7 @@ BitArray BitArray::operator~() const{
         res.arr_[i] = ~res.arr_[i];
     }
 
-    int remainder = num_bits_ % BITS_PER_BLOCK;
-    if (remainder != 0)
-        res.arr_[num_blocks_ - 1] &= (1ul << remainder) - 1UL;
+    res.remove_extra_bits();
 
     return res;
 
@@ -427,15 +441,10 @@ void BitArray::resize(int new_num_bits, bool value){
 
     if (new_num_bits < num_bits_) {
 
-        int new_num_blocks;
-        if (new_num_bits % BITS_PER_BLOCK == 0)
-            new_num_blocks = new_num_bits/BITS_PER_BLOCK;
-        else
-            new_num_blocks = new_num_bits/BITS_PER_BLOCK + 1;
-
+        int new_num_blocks = count_blocks(new_num_bits);
 
         if (new_num_blocks < num_blocks_) {
-            unsigned long* new_arr = new unsigned long[new_num_blocks]{};
+            auto* new_arr = new unsigned long[new_num_blocks]{};
 
             for (int i = 0; i < new_num_blocks; i++)
                 new_arr[i] = arr_[i];
@@ -447,24 +456,18 @@ void BitArray::resize(int new_num_bits, bool value){
         }
         num_bits_ = new_num_bits;
 
-        int remainder = num_bits_ % BITS_PER_BLOCK;
-        if (remainder != 0)
-            arr_[num_blocks_ - 1] &= (1UL << remainder) - 1UL;
+        remove_extra_bits();
 
         return;
 
     }
 
 
-    int new_num_blocks;
-    if (new_num_bits % BITS_PER_BLOCK == 0)
-        new_num_blocks = new_num_bits/BITS_PER_BLOCK;
-    else
-        new_num_blocks = new_num_bits/BITS_PER_BLOCK + 1;
+    int new_num_blocks = count_blocks(new_num_bits);
 
     if (new_num_blocks > num_blocks_) {
 
-        unsigned long* new_arr = new unsigned long[new_num_blocks]{};
+        auto* new_arr = new unsigned long[new_num_blocks]{};
 
         if (num_blocks_ != 0) {
             for (int i = 0; i < num_blocks_; i++)
@@ -490,7 +493,7 @@ void BitArray::resize(int new_num_bits, bool value){
 void BitArray::push_back(bool bit) {
     if (num_bits_ % BITS_PER_BLOCK == 0) {
 
-        unsigned long* new_arr = new unsigned long[num_blocks_ + 1]{};
+        auto* new_arr = new unsigned long[num_blocks_ + 1]{};
 
         if (num_blocks_ != 0) {
 
